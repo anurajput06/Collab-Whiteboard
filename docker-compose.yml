@@ -1,0 +1,19 @@
+version: "3.8"
+services:
+  server:
+    build: ./server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./server/data:/app/data   # persist snapshots across container restarts
+    restart: unless-stopped
+
+  client:
+    image: nginx:alpine
+    ports:
+      - "5173:80"
+    volumes:
+      - ./client:/usr/share/nginx/html:ro
+    depends_on:
+      - server
+    restart: unless-stopped

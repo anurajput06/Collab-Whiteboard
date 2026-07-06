@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collab Whiteboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- ---- Auth modal: shown until the user signs in or chooses guest mode ---- -->
+<div class="auth-overlay" id="authModal">
+  <div class="auth-card">
+    <div class="auth-mark">✎</div>
+    <h1>Collab Whiteboard</h1>
+    <p class="auth-sub">Sign in to keep your boards under your name, or jump straight in as a guest. Either way, you can draw and collaborate live right now.</p>
+
+    <div id="googleBtnContainer" class="google-btn-slot"></div>
+
+    <div class="auth-divider"><span>or sign in with email</span></div>
+
+    <div id="emailStep">
+      <input type="email" id="emailInput" placeholder="you@gmail.com" class="auth-input">
+      <button id="sendOtpBtn" class="auth-btn-primary">Email me a sign-in code</button>
+    </div>
+    <div id="otpStep" style="display:none">
+      <p class="auth-hint">Check your email for a 6-digit code and enter it below.</p>
+      <input type="text" id="otpInput" placeholder="6-digit code" maxlength="6" class="auth-input auth-input-otp">
+      <button id="verifyOtpBtn" class="auth-btn-primary">Verify & continue</button>
+    </div>
+
+    <p id="authError" class="auth-error"></p>
+
+    <button id="guestBtn" class="auth-btn-ghost">Continue as guest →</button>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- ---- Top bar: connection, room, identity ---- -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="brand">✎ Collab Whiteboard</span>
+      <span class="status-pill">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting…</span>
+        <span class="peer-count">· <span id="peerCount">1</span> person here</span>
+      </span>
+    </div>
+    <div class="topbar-center">
+      <span class="room-info">
+        Room code: <b id="roomLabel">-</b>
+        <button id="copyLinkBtn" class="pill-btn">📋 Copy invite link</button>
+        <button id="downloadBtn" class="pill-btn">💾 Save as image</button>
+      </span>
+    </div>
+    <div class="topbar-right">
+      <span id="userName" class="user-name">you: ---</span>
+      <button id="signOutBtn" class="pill-btn" style="display:none">Sign out</button>
+    </div>
+  </div>
+
+  <div class="main-area">
+    <div class="board-wrap">
+      <div class="board-stage" id="boardStage">
+        <div class="board-frame" id="boardFrame">
+          <canvas id="board" width="1000" height="620"></canvas>
+        </div>
+
+        <!-- ---- Floating toolbar (colors, brush types, text, eraser, size, undo/redo, background) ---- -->
+        <div class="float-toolbar" id="toolbar">
+          <div class="ft-group" id="swatchGroup">
+            <div class="swatch active" data-color="#1F2430" style="background:#1F2430" title="Charcoal"></div>
+            <div class="swatch" data-color="#EF4444" style="background:#EF4444" title="Red"></div>
+            <div class="swatch" data-color="#2B6CB8" style="background:#2B6CB8" title="Blue"></div>
+            <div class="swatch" data-color="#1F8A55" style="background:#1F8A55" title="Green"></div>
+            <div class="swatch" data-color="#F5A524" style="background:#F5A524" title="Amber"></div>
+            <div class="swatch" data-color="#6D5EF0" style="background:#6D5EF0" title="Violet"></div>
+            <label class="swatch swatch-custom" title="Pick any pen color">
+              <span>+</span>
+              <input type="color" id="customColorPicker" value="#FF69B4">
+            </label>
+          </div>
+
+          <div class="ft-divider"></div>
+
+          <button class="ft-btn active" id="brushPenBtn" title="Fine pen">
+            <span class="ft-icon">✎</span><span class="ft-label">Pen</span>
+          </button>
+          <button class="ft-btn" id="brushMarkerBtn" title="Marker — bolder, slightly soft edge">
+            <span class="ft-icon">●</span><span class="ft-label">Marker</span>
+          </button>
+          <button class="ft-btn" id="brushHighlighterBtn" title="Highlighter — wide, translucent">
+            <span class="ft-icon">▬</span><span class="ft-label">Highlight</span>
+          </button>
+
+          <div class="ft-divider"></div>
+
+          <button class="ft-btn" id="textToolBtn" title="Add text — click the board to place it">
+            <span class="ft-icon">T</span><span class="ft-label">Text</span>
+          </button>
+          <button class="ft-btn" id="eraserBtn" title="Eraser">
+            <span class="ft-icon">▢</span><span class="ft-label">Eraser</span>
+          </button>
+
+          <div class="ft-divider"></div>
+
+          <div class="ft-size-row">
+            <span class="ft-label">Size</span>
+            <input type="range" id="widthSlider" min="1" max="14" value="3">
+          </div>
+
+          <div class="ft-divider"></div>
+
+          <div class="ft-row-pair">
+            <button class="ft-btn" id="undoBtn" title="Undo your last stroke" disabled>
+              <span class="ft-icon">↶</span><span class="ft-label">Undo</span>
+            </button>
+            <button class="ft-btn" id="redoBtn" title="Redo" disabled>
+              <span class="ft-icon">↷</span><span class="ft-label">Redo</span>
+            </button>
+          </div>
+
+          <div class="ft-divider"></div>
+
+          <div class="ft-bg-section">
+            <span class="ft-label ft-bg-label">Background</span>
+            <div class="ft-bg-row" id="bgSwatchGroup">
+              <div class="bg-swatch active" data-bg="#FFFFFF" style="background:#FFFFFF" title="Paper white"></div>
+              <div class="bg-swatch" data-bg="#FBF6EC" style="background:#FBF6EC" title="Warm cream"></div>
+              <div class="bg-swatch" data-bg="#EAF1FB" style="background:#EAF1FB" title="Soft blue"></div>
+              <div class="bg-swatch" data-bg="#EAFBF3" style="background:#EAFBF3" title="Soft mint"></div>
+              <div class="bg-swatch" data-bg="#2B2F36" style="background:#2B2F36" title="Chalkboard dark"></div>
+              <label class="bg-swatch bg-swatch-custom" title="Pick any background color">
+                <span>+</span>
+                <input type="color" id="customBgPicker" value="#FDE9EC">
+              </label>
+            </div>
+          </div>
+
+          <div class="ft-divider"></div>
+
+          <button class="ft-btn ft-btn-danger" id="clearBtn" title="Clear board for everyone">
+            <span class="ft-icon">🗑</span><span class="ft-label">Clear</span>
+          </button>
+        </div>
+
+        <!-- ---- Hint shown the first time, for new users ---- -->
+        <div class="canvas-hint" id="canvasHint">Pick a pen above, then draw anywhere. Everyone in this room sees it instantly.</div>
+
+        <!-- ---- Shown only when the activity log is collapsed ---- -->
+        <button class="show-log-btn" id="showLogBtn" style="display:none" title="Show activity log">📜 Show log</button>
+      </div>
+
+      <div class="timemachine">
+        <div class="tm-heading">
+          <span class="tm-title">⏱ Time Machine</span>
+          <span class="tm-subtitle">Drag the slider to see how the board looked earlier. Save that version as a brand-new board, or bring in someone else's board — nothing ever gets lost or overwritten.</span>
+        </div>
+        <div class="tm-row">
+          <span class="tm-slider-label">Start</span>
+          <input type="range" id="tmSlider" min="0" max="100" value="100" class="tm-slider">
+          <span class="tm-slider-label">Now</span>
+          <span id="tmTimeLabel" class="tm-time-badge">live</span>
+        </div>
+        <div class="tm-actions">
+          <button id="forkBtn" class="tm-btn tm-btn-primary">📸 Save this moment as a new board</button>
+          <input type="text" id="mergeRoomInput" placeholder="Paste the other board's code" class="tm-input">
+          <button id="mergeBtn" class="tm-btn">⬇️ Bring that board's drawings here</button>
+        </div>
+        <p id="tmStatus" class="tm-status"></p>
+      </div>
+    </div>
+
+    <div class="oplog" id="oplogPanel">
+      <div class="oplog-head">
+        <div class="oplog-head-row">
+          <h2>Activity log</h2>
+          <button id="toggleLogBtn" class="pill-btn" title="Hide the activity log to give the board more room">✕ Hide</button>
+        </div>
+        <p>Every stroke and text box below is its own entry (a <b>CRDT operation</b>) — that's what makes rewinding, forking, merging, and undo possible with zero conflicts.</p>
+      </div>
+      <div class="oplog-list" id="opList"></div>
+      <div class="oplog-foot">Connected to: <span id="serverUrlLabel">-</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="auth-client.js"></script>
+<script src="app.js"></script>
+<script>window.addEventListener('load', () => window.WhiteboardAuth.wireModal());</script>
+</body>
+</html>

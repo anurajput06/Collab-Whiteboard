@@ -238,7 +238,7 @@ node test-client.js   # spins up two fake clients, proves they converge
 Share `https://your-site.netlify.app/?room=anything` — anyone who opens that
 link joins the same board instantly, signed in or not.
 
-## Scaling up (what to say in an interview about "next steps")
+## Scaling up
 
 - **Redis pub/sub** once you run 2+ server instances — each instance
   broadcasts ops locally, so cross-instance clients need Redis to relay them.

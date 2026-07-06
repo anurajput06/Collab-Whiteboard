@@ -43,7 +43,7 @@ tool offers: **git-style time travel, forking, and merging of boards.**
 - **Save as image** — one click downloads the current board as a PNG
   (background + drawing composited together), ready to share on WhatsApp,
   email, or anywhere else.
-- **Custom pen color** — beyond the 6 presets, a color-wheel swatch opens a
+- **Custom pen color** — beyond the 6  presets, a color-wheel swatch opens a
   native color picker for any pen color.
 
 ## The X-factor: Board Time Machine

@@ -17,7 +17,6 @@
     "cors": "^2.8.5",
     "jsonwebtoken": "^9.0.2",
     "google-auth-library": "^9.14.1",
-    "nodemailer": "^6.9.14",
     "dotenv": "^16.4.5"
   }
 }

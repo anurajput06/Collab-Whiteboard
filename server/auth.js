@@ -62,7 +62,14 @@ router.post('/auth/google', async (req, res) => {
     res.json({ token, user: { name: user.name, email: user.email, picture: user.picture } });
   } catch (err) {
     console.error('[auth/google] verification failed:', err.message);
-    res.status(401).json({ error: 'Invalid Google credential' });
+    // The single most common cause: the GOOGLE_CLIENT_ID on THIS server
+    // doesn't match the GOOGLE_CLIENT_ID in the deployed client/config.js —
+    // Google rejects the token because the "audience" doesn't match.
+    let reason = 'Invalid Google credential.';
+    if (/wrong recipient|audience/i.test(err.message || '')) {
+      reason = 'Invalid Google credential — the GOOGLE_CLIENT_ID on this server does not match the one in client/config.js. Double-check both are the exact same value.';
+    }
+    res.status(401).json({ error: reason });
   }
 });
 
@@ -79,14 +86,12 @@ router.post('/auth/otp/request', async (req, res) => {
     const result = await sendOtpEmail(email, otp);
     res.json({ sent: true, devMode: !!result.devMode }); // devMode=true means check server logs, no real email was sent
   } catch (err) {
-    console.error('[auth/otp/request] send failed:', err.code || '', err.message);
+    console.error('[auth/otp/request] send failed:', err.status || '', err.message);
     let reason = 'Failed to send the email. Check the server terminal for details.';
-    if (err.code === 'EAUTH' || /invalid login|username and password/i.test(err.message || '')) {
-      reason = 'Email login was rejected — make sure SMTP_PASS is a Gmail App Password (not your normal password), and SMTP_USER matches the account it was created for.';
-    } else if (err.code === 'ETIMEDOUT' || err.code === 'ECONNECTION' || err.code === 'ESOCKET') {
-      reason = 'Could not reach the email server — double-check SMTP_HOST/SMTP_PORT, and make sure your network/firewall isn\'t blocking outbound email.';
-    } else if (err.responseCode === 534 || /application-specific password/i.test(err.message || '')) {
-      reason = 'Gmail is asking for an App Password — generate one at myaccount.google.com/apppasswords (requires 2-Step Verification to be on) and use that as SMTP_PASS.';
+    if (err.status === 401) {
+      reason = 'Email login was rejected — check that BREVO_API_KEY is correct.';
+    } else if (err.status === 400 && /sender/i.test(err.message || '')) {
+      reason = 'That sender email isn\'t verified yet — verify it under Brevo → Senders before it can send mail.';
     }
     res.status(500).json({ error: reason });
   }

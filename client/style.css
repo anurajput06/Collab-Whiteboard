@@ -62,6 +62,10 @@ button{ font-family:inherit; }
 }
 .pill-btn:hover{ background:var(--accent-violet-soft); border-color:var(--accent-violet); }
 
+.mic-btn.active{ background:var(--accent-red-soft); border-color:var(--accent-red); color:var(--accent-red); }
+.mic-btn.connecting{ background:var(--accent-amber-soft); border-color:var(--accent-amber); color:#8A5A0A; }
+.voice-status{ font-size:12px; color:var(--ink-faint); font-family:var(--font-mono); }
+
 /* ================= Mobile responsiveness ================= */
 /* The topbar packs a lot in one row (brand, status, room code, invite/save
    buttons, user name, sign out). On narrow screens there isn't room for all

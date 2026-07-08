@@ -54,6 +54,8 @@
         </button>
         <div class="presence-dropdown" id="presenceDropdown" style="display:none"></div>
       </div>
+      <button class="pill-btn mic-btn" id="micBtn" title="Turn on your mic so others in this room can hear you">🎤 Mic off</button>
+      <span id="voiceStatus" class="voice-status"></span>
     </div>
     <div class="topbar-center">
       <span class="room-info">
@@ -198,6 +200,9 @@
     </div>
   </div>
 </div>
+
+<!-- Hidden <audio> elements for each peer's incoming voice-chat stream get added here -->
+<div id="audioContainer" style="display:none"></div>
 
 <script src="config.js"></script>
 <script src="auth-client.js"></script>

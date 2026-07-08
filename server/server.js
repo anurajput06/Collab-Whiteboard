@@ -208,11 +208,12 @@ app.post('/rooms/:targetRoomId/merge', (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-function presenceNames(room) {
-  return Array.from(room.clients).map(c => c.identity?.name || 'Someone').filter(Boolean);
+function presencePeers(room) {
+  return Array.from(room.clients).map(c => ({ id: c.peerId, name: c.identity?.name || 'Someone' }));
 }
 function broadcastPresence(room) {
-  broadcast(room, { type: 'presence', peerCount: room.clients.size, names: presenceNames(room) }, null);
+  const peers = presencePeers(room);
+  broadcast(room, { type: 'presence', peerCount: room.clients.size, peers }, null);
 }
 
 wss.on('connection', (ws, req) => {
@@ -225,6 +226,10 @@ wss.on('connection', (ws, req) => {
   ws.identity = session
     ? { name: session.name, email: session.email, picture: session.picture, guest: false }
     : { name: `Guest-${Math.random().toString(36).slice(2, 6)}`, guest: true };
+  // A stable per-connection id, used to address WebRTC voice-chat signaling
+  // (offer/answer/ICE) at a specific peer — separate from identity, which
+  // can change via rename.
+  ws.peerId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
   if (session) addRoomToUser(session.email, roomId);
 
@@ -242,7 +247,8 @@ wss.on('connection', (ws, req) => {
     clearTs: room.clearTs,
     clearClientId: room.clearClientId,
     peerCount: room.clients.size,
-    names: presenceNames(room),
+    yourPeerId: ws.peerId,
+    peers: presencePeers(room),
     you: ws.identity,
   }));
 
@@ -260,6 +266,19 @@ wss.on('connection', (ws, req) => {
       if (clean) {
         ws.identity.name = clean;
         broadcastPresence(room);
+      }
+      return;
+    }
+
+    // ---- Voice chat signaling relay ----
+    // The server never looks at audio — it just forwards WebRTC offer/
+    // answer/ICE payloads between two specific peers in the same room,
+    // addressed by peerId. The actual audio is peer-to-peer (WebRTC),
+    // this is only the handshake.
+    if (msg.type === 'signal' && typeof msg.to === 'string' && msg.payload) {
+      const target = Array.from(room.clients).find(c => c.peerId === msg.to);
+      if (target && target.readyState === target.OPEN) {
+        target.send(JSON.stringify({ type: 'signal', from: ws.peerId, payload: msg.payload }));
       }
       return;
     }

@@ -155,15 +155,17 @@
   // ---- Presence dropdown (who's actually in this room) ----
   const presenceBtn = document.getElementById('presenceBtn');
   const presenceDropdown = document.getElementById('presenceDropdown');
-  let peerNames = [];
+  let myPeerId = null;
+  let roomPeers = []; // [{id, name}] — includes yourself
   function renderPresenceDropdown() {
-    if (peerNames.length === 0) {
+    const others = roomPeers.filter(p => p.id !== myPeerId);
+    if (others.length === 0 && roomPeers.length <= 1) {
       presenceDropdown.innerHTML = `<div class="presence-row">Just you so far</div>`;
       return;
     }
-    presenceDropdown.innerHTML = peerNames.map(name => {
-      const isYou = name === displayName;
-      return `<div class="presence-row"><span class="presence-dot"></span>${name}${isYou ? ' (you)' : ''}</div>`;
+    presenceDropdown.innerHTML = roomPeers.map(p => {
+      const isYou = p.id === myPeerId;
+      return `<div class="presence-row"><span class="presence-dot"></span>${p.name}${isYou ? ' (you)' : ''}</div>`;
     }).join('');
   }
   presenceBtn.addEventListener('click', (e) => {
@@ -173,6 +175,118 @@
   });
   document.addEventListener('click', () => { presenceDropdown.style.display = 'none'; });
   presenceDropdown.addEventListener('click', (e) => e.stopPropagation());
+
+  // ---- Voice chat: WebRTC audio, signaled over the existing WebSocket ----
+  // Mesh model: whoever has their mic ON calls everyone else in the room
+  // directly (one RTCPeerConnection per listener). Turning your mic off
+  // tears down only the calls YOU initiated — you can still hear anyone
+  // else whose mic is on, without needing your own mic on.
+  const micBtn = document.getElementById('micBtn');
+  const voiceStatus = document.getElementById('voiceStatus');
+  const audioContainer = document.getElementById('audioContainer');
+  const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+  let micOn = false;
+  let localStream = null;
+  const outgoingConnections = new Map(); // peerId -> RTCPeerConnection (we're sending them our audio)
+  const incomingConnections = new Map(); // peerId -> RTCPeerConnection (they're sending us audio)
+
+  function sendSignal(to, payload) {
+    const msg = { type: 'signal', to, payload };
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  }
+
+  function callPeer(peerId) {
+    if (!localStream || outgoingConnections.has(peerId)) return;
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    outgoingConnections.set(peerId, pc);
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    pc.onicecandidate = (e) => {
+      if (e.candidate) sendSignal(peerId, { kind: 'ice', candidate: e.candidate, role: 'offerer' });
+    };
+    pc.createOffer()
+      .then(offer => pc.setLocalDescription(offer).then(() => offer))
+      .then(offer => sendSignal(peerId, { kind: 'offer', sdp: offer.sdp }))
+      .catch(() => {});
+  }
+
+  function handleIncomingSignal(fromPeerId, payload) {
+    if (payload.kind === 'offer') {
+      let pc = incomingConnections.get(fromPeerId);
+      if (pc) pc.close();
+      pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      incomingConnections.set(fromPeerId, pc);
+      pc.onicecandidate = (e) => {
+        if (e.candidate) sendSignal(fromPeerId, { kind: 'ice', candidate: e.candidate, role: 'answerer' });
+      };
+      pc.ontrack = (e) => {
+        let audioEl = document.getElementById('audio-' + fromPeerId);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.id = 'audio-' + fromPeerId;
+          audioEl.autoplay = true;
+          audioContainer.appendChild(audioEl);
+        }
+        audioEl.srcObject = e.streams[0];
+      };
+      pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp })
+        .then(() => pc.createAnswer())
+        .then(answer => pc.setLocalDescription(answer).then(() => answer))
+        .then(answer => sendSignal(fromPeerId, { kind: 'answer', sdp: answer.sdp }))
+        .catch(() => {});
+    } else if (payload.kind === 'answer') {
+      const pc = outgoingConnections.get(fromPeerId);
+      if (pc) pc.setRemoteDescription({ type: 'answer', sdp: payload.sdp }).catch(() => {});
+    } else if (payload.kind === 'ice') {
+      // role tells us, from the SENDER's perspective, which side of the
+      // handshake this candidate belongs to — so we know which of our two
+      // local connection maps (outgoing vs incoming) it applies to.
+      const pc = payload.role === 'offerer' ? incomingConnections.get(fromPeerId) : outgoingConnections.get(fromPeerId);
+      if (pc) pc.addIceCandidate(payload.candidate).catch(() => {});
+    }
+  }
+
+  function teardownPeer(peerId) {
+    const pcOut = outgoingConnections.get(peerId);
+    if (pcOut) { pcOut.close(); outgoingConnections.delete(peerId); }
+    const pcIn = incomingConnections.get(peerId);
+    if (pcIn) { pcIn.close(); incomingConnections.delete(peerId); }
+    const audioEl = document.getElementById('audio-' + peerId);
+    if (audioEl) audioEl.remove();
+  }
+
+  function syncVoiceWithPeers() {
+    const currentIds = new Set(roomPeers.map(p => p.id).filter(id => id !== myPeerId));
+    if (micOn) {
+      currentIds.forEach(id => { if (!outgoingConnections.has(id)) callPeer(id); });
+    }
+    const knownIds = new Set([...outgoingConnections.keys(), ...incomingConnections.keys()]);
+    knownIds.forEach(id => { if (!currentIds.has(id)) teardownPeer(id); });
+  }
+
+  async function turnMicOn() {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      voiceStatus.textContent = 'Mic permission denied or unavailable.';
+      return;
+    }
+    micOn = true;
+    micBtn.textContent = '🎤 Mic on';
+    micBtn.classList.add('active');
+    voiceStatus.textContent = 'Others here can hear you';
+    roomPeers.filter(p => p.id !== myPeerId).forEach(p => callPeer(p.id));
+  }
+  function turnMicOff() {
+    micOn = false;
+    micBtn.textContent = '🎤 Mic off';
+    micBtn.classList.remove('active');
+    voiceStatus.textContent = '';
+    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+    outgoingConnections.forEach(pc => pc.close());
+    outgoingConnections.clear();
+  }
+  micBtn.addEventListener('click', () => { micOn ? turnMicOff() : turnMicOn(); });
 
   // ---- Brush render parameters ----
   function brushParams(brush) {
@@ -607,8 +721,10 @@
         (msg.ops || []).forEach(op => knownOps.set(op.id, op));
         (msg.tombstones || []).forEach(id => tombstones.add(id));
         peerCountEl.textContent = msg.peerCount || 1;
-        peerNames = msg.names || [];
+        myPeerId = msg.yourPeerId || null;
+        roomPeers = msg.peers || [];
         renderPresenceDropdown();
+        syncVoiceWithPeers();
         refreshTimeMachineRange();
         redrawAll();
       } else if (msg.type === 'op') {
@@ -630,12 +746,19 @@
         }
       } else if (msg.type === 'presence') {
         peerCountEl.textContent = msg.peerCount;
-        peerNames = msg.names || [];
+        roomPeers = msg.peers || [];
         renderPresenceDropdown();
+        syncVoiceWithPeers();
+      } else if (msg.type === 'signal') {
+        handleIncomingSignal(msg.from, msg.payload);
       }
     };
 
-    ws.onclose = () => { setStatus('offline'); scheduleReconnect(); };
+    ws.onclose = () => {
+      setStatus('offline');
+      [...outgoingConnections.keys(), ...incomingConnections.keys()].forEach(teardownPeer);
+      scheduleReconnect();
+    };
     ws.onerror = () => {};
   }
 

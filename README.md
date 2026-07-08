@@ -6,8 +6,6 @@ draws on the same board live.
 Built on a custom CRDT (not a library like Yjs), which is why undo/redo,
 history scrubbing, and merging boards all work off the same data model.
 
-
-**Demo link**- https://time-travel-whiteboard.netlify.app/
 ## Features
 - Pen / Marker / Highlighter / Eraser / Text, custom colors, adjustable size
 - Undo / Redo
@@ -15,6 +13,8 @@ history scrubbing, and merging boards all work off the same data model.
 - Save board as PNG
 - Editable display name (session-only)
 - Presence list (click "N people here")
+- **Voice chat** — turn your mic on and everyone else in the room can hear
+  you, peer-to-peer (WebRTC), no separate call app needed
 - Collapsible activity log + Time Machine panel
 - Google Sign-In, email OTP, or guest — auth is optional
 
@@ -70,6 +70,8 @@ data doesn't survive a redeploy, only a restart).
 - JSON file storage, not a real database
 - No rate limiting on the OTP endpoint
 - Renamed display names don't persist past the session
+- Voice chat uses a public STUN server only (no TURN relay) — works on most
+  networks, but may fail behind strict corporate/university firewalls
 
 ## Structure
 ```

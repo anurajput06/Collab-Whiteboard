@@ -125,6 +125,11 @@
 
   function hideHint() { if (canvasHint) canvasHint.style.display = 'none'; }
 
+  // On a small/short screen there usually isn't room for the board AND both
+  // side panels at once, so default them to collapsed there (still just a
+  // default — the user's own choice, once made, is remembered either way).
+  const isSmallScreen = window.innerWidth <= 700 || window.innerHeight <= 700;
+
   // ---- Activity log collapse toggle (frees up board space when hidden) ----
   const oplogPanel = document.getElementById('oplogPanel');
   const toggleLogBtn = document.getElementById('toggleLogBtn');
@@ -137,7 +142,10 @@
   }
   toggleLogBtn.addEventListener('click', () => setLogCollapsed(true));
   showLogBtn.addEventListener('click', () => setLogCollapsed(false));
-  try { setLogCollapsed(localStorage.getItem(LOG_COLLAPSE_KEY) === '1'); } catch (e) {}
+  try {
+    const saved = localStorage.getItem(LOG_COLLAPSE_KEY);
+    setLogCollapsed(saved !== null ? saved === '1' : isSmallScreen);
+  } catch (e) { setLogCollapsed(isSmallScreen); }
 
   // ---- Time Machine collapse toggle (same idea — board gets more room) ----
   const timeMachinePanel = document.getElementById('timeMachinePanel');
@@ -151,7 +159,11 @@
   }
   hideTmBtn.addEventListener('click', () => setTmCollapsed(true));
   showTmBtn.addEventListener('click', () => setTmCollapsed(false));
-  try { setTmCollapsed(localStorage.getItem(TM_COLLAPSE_KEY) === '1'); } catch (e) {}
+  try {
+    const saved = localStorage.getItem(TM_COLLAPSE_KEY);
+    setTmCollapsed(saved !== null ? saved === '1' : isSmallScreen);
+  } catch (e) { setTmCollapsed(isSmallScreen); }
+
 
   // ---- Presence dropdown (who's actually in this room) ----
   const presenceBtn = document.getElementById('presenceBtn');

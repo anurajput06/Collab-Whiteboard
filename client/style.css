@@ -88,6 +88,14 @@ button{ font-family:inherit; }
   .show-tm-btn{ bottom:12px; left:12px; }
   .presence-dropdown{ max-width:calc(100vw - 32px); }
 }
+/* Safety net: on short screens, the topbar + toolbar + (uncollapsed) Time
+   Machine can add up to more than the viewport height. Rather than silently
+   clipping whatever doesn't fit (which is how things like Time Machine were
+   going missing), let this area scroll so everything stays reachable. */
+@media (max-height:700px){
+  .main-area{ overflow-y:auto; }
+  .board-wrap{ min-height:480px; }
+}
 
 /* ================= Main layout ================= */
 .main-area{ flex:1; display:flex; min-height:0; }

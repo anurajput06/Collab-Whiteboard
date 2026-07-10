@@ -209,7 +209,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 function presencePeers(room) {
-  return Array.from(room.clients).map(c => ({ id: c.peerId, name: c.identity?.name || 'Someone' }));
+  return Array.from(room.clients).map(c => ({ id: c.peerId, name: c.identity?.name || 'Someone', micOn: !!c.identity?.micOn }));
 }
 function broadcastPresence(room) {
   const peers = presencePeers(room);
@@ -224,8 +224,8 @@ wss.on('connection', (ws, req) => {
   const token = url.searchParams.get('token');
   const session = token ? verifySession(token) : null;
   ws.identity = session
-    ? { name: session.name, email: session.email, picture: session.picture, guest: false }
-    : { name: `Guest-${Math.random().toString(36).slice(2, 6)}`, guest: true };
+    ? { name: session.name, email: session.email, picture: session.picture, guest: false, micOn: false }
+    : { name: `Guest-${Math.random().toString(36).slice(2, 6)}`, guest: true, micOn: false };
   // A stable per-connection id, used to address WebRTC voice-chat signaling
   // (offer/answer/ICE) at a specific peer — separate from identity, which
   // can change via rename.
@@ -267,6 +267,12 @@ wss.on('connection', (ws, req) => {
         ws.identity.name = clean;
         broadcastPresence(room);
       }
+      return;
+    }
+
+    if (msg.type === 'mic-status' && typeof msg.on === 'boolean') {
+      ws.identity.micOn = msg.on;
+      broadcastPresence(room);
       return;
     }
 

@@ -178,7 +178,8 @@
     }
     presenceDropdown.innerHTML = roomPeers.map(p => {
       const isYou = p.id === myPeerId;
-      return `<div class="presence-row"><span class="presence-dot"></span>${p.name}${isYou ? ' (you)' : ''}</div>`;
+      const micTag = p.micOn ? ' 🎤' : '';
+      return `<div class="presence-row"><span class="presence-dot"></span>${p.name}${isYou ? ' (you)' : ''}${micTag}</div>`;
     }).join('');
   }
   presenceBtn.addEventListener('click', (e) => {
@@ -222,16 +223,18 @@
 
   function callPeer(peerId) {
     if (!localStream || outgoingConnections.has(peerId)) return;
+    console.log('[voice] calling peer', peerId);
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     outgoingConnections.set(peerId, pc);
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     pc.onicecandidate = (e) => {
       if (e.candidate) sendSignal(peerId, { kind: 'ice', candidate: e.candidate, role: 'offerer' });
     };
+    pc.oniceconnectionstatechange = () => console.log('[voice] outgoing ICE state with', peerId, ':', pc.iceConnectionState);
     pc.createOffer()
       .then(offer => pc.setLocalDescription(offer).then(() => offer))
       .then(offer => sendSignal(peerId, { kind: 'offer', sdp: offer.sdp }))
-      .catch(() => {});
+      .catch(err => console.error('[voice] offer creation failed:', err.message));
   }
 
   function handleIncomingSignal(fromPeerId, payload) {
@@ -244,15 +247,29 @@
         if (e.candidate) sendSignal(fromPeerId, { kind: 'ice', candidate: e.candidate, role: 'answerer' });
       };
       pc.ontrack = (e) => {
+        console.log('[voice] receiving audio track from', fromPeerId);
         let audioEl = document.getElementById('audio-' + fromPeerId);
         if (!audioEl) {
           audioEl = document.createElement('audio');
           audioEl.id = 'audio-' + fromPeerId;
           audioEl.autoplay = true;
+          audioEl.playsInline = true;
           audioContainer.appendChild(audioEl);
         }
         audioEl.srcObject = e.streams[0];
+        // Explicitly call play() (rather than relying only on the autoplay
+        // attribute) so we get a promise we can catch — browsers commonly
+        // block audio autoplay silently if there's been no user interaction
+        // on the page yet, which otherwise looks exactly like "no audio
+        // arrived" with no error anywhere.
+        audioEl.play().catch(err => {
+          console.warn('[voice] playback blocked, will retry on next click:', err.message);
+          voiceStatus.textContent = 'Tap anywhere on the page to enable incoming audio.';
+          const resume = () => { audioEl.play().catch(() => {}); };
+          document.addEventListener('click', resume, { once: true });
+        });
       };
+      pc.oniceconnectionstatechange = () => console.log('[voice] incoming ICE state with', fromPeerId, ':', pc.iceConnectionState);
       pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp })
         .then(() => pc.createAnswer())
         .then(answer => pc.setLocalDescription(answer).then(() => answer))
@@ -288,6 +305,12 @@
     knownIds.forEach(id => { if (!currentIds.has(id)) teardownPeer(id); });
   }
 
+  function sendMicStatus(on) {
+    const msg = { type: 'mic-status', on };
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    else outbox.push(msg);
+  }
+
   async function turnMicOn() {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -299,6 +322,7 @@
     micBtn.textContent = '🎤 Mic on';
     micBtn.classList.add('active');
     voiceStatus.textContent = 'Others here can hear you';
+    sendMicStatus(true);
     roomPeers.filter(p => p.id !== myPeerId).forEach(p => callPeer(p.id));
   }
   function turnMicOff() {
@@ -306,6 +330,7 @@
     micBtn.textContent = '🎤 Mic off';
     micBtn.classList.remove('active');
     voiceStatus.textContent = '';
+    sendMicStatus(false);
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     outgoingConnections.forEach(pc => pc.close());
     outgoingConnections.clear();
